@@ -6,39 +6,71 @@ import React, {
   useMemo,
 } from "react";
 
-/**
- * Relógio Digital Minimalista — App.jsx
- * - Formato 24h por padrão (opção para 12/24)
- * - Tap/click na tela para alternar modos: TIME -> DATE -> TEMP -> STOPWATCH -> TIMER
- * - Alarme simples, cronômetro, contador regressivo
- * - Visual minimalista com fonte Orbitron e LED-like subtle glow
- * - Funcionalidade de Temperatura com Geolocation e OpenMeteo/Nominatim.
- */
+// Definições de Tipos (Interfaces)
+// ----------------------------------------------------
 
-/* ---------- Helpers ---------- */
-const loadFromStorage = (key, fallback) => {
+type Mode = "TIME" | "DATE" | "TEMP" | "STOPWATCH" | "TIMER";
+
+interface AlarmState {
+  enabled: boolean;
+  time: string; // "HH:MM"
+}
+
+interface DisplayContent {
+  main: React.ReactNode;
+  sub: React.ReactNode;
+  label: string;
+}
+
+interface StopwatchRef {
+  startAt: number | null;
+  accumulated: number; // ms
+}
+
+interface TimerRef {
+  endAt: number | null;
+  base: number; // ms (duração original)
+}
+
+// Helpers para Geolocation
+interface Position {
+    coords: GeolocationCoordinates;
+    timestamp: number;
+}
+interface GeolocationPositionError {
+    readonly code: number;
+    readonly message: string;
+}
+
+// Funções Auxiliares
+// ----------------------------------------------------
+
+// Define um tipo genérico T para garantir que o valor retornado seja do tipo esperado
+const loadFromStorage = <T,>(key: string, fallback: T): T => {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
-  } catch(e) {
+  } catch (e) {
     console.error("Erro ao carregar do localStorage:", e);
     return fallback;
   }
 };
-const saveToStorage = (key, value) => {
+const saveToStorage = (key: string, value: any): void => {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch(e) {
+  } catch (e) {
     console.error("Erro ao salvar no localStorage:", e);
   }
 };
 
-const MODES = ["TIME", "DATE", "TEMP", "STOPWATCH", "TIMER"]; // cycle order
+const MODES: Mode[] = ["TIME", "DATE", "TEMP", "STOPWATCH", "TIMER"]; // cycle order
 
-/* ---------- Main Component ---------- */
-export default function App() {
+// Componente Principal
+// ----------------------------------------------------
+
+const App: React.FC = () => {
   /* ---------- Core time state ---------- */
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState<Date>(new Date());
 
   useEffect(() => {
     // Atualiza a hora a cada segundo
@@ -47,16 +79,16 @@ export default function App() {
   }, []);
 
   /* ---------- UI / Mode ---------- */
-  const [modeIndex, setModeIndex] = useState(0);
-  const mode = MODES[modeIndex];
-  const cycleMode = useCallback(() => {
+  const [modeIndex, setModeIndex] = useState<number>(0);
+  const mode: Mode = MODES[modeIndex];
+  const cycleMode = useCallback((): void => {
     setModeIndex((m) => (m + 1) % MODES.length);
   }, []);
 
   /* Show/hide controls (auto-hide) */
-  const [showControls, setShowControls] = useState(false);
-  const hideControlsTimerRef = useRef(null);
-  const touchOrMove = useCallback(() => {
+  const [showControls, setShowControls] = useState<boolean>(false);
+  const hideControlsTimerRef = useRef<number | null>(null);
+  const touchOrMove = useCallback((): void => {
     setShowControls(true);
     if (hideControlsTimerRef.current)
       clearTimeout(hideControlsTimerRef.current);
@@ -76,18 +108,21 @@ export default function App() {
   }, [touchOrMove]);
 
   /* ---------- Display format 12/24 ---------- */
-  const [is24h, setIs24h] = useState(loadFromStorage("clock_is24h", true));
+  const [is24h, setIs24h] = useState<boolean>(loadFromStorage("clock_is24h", true));
   useEffect(() => saveToStorage("clock_is24h", is24h), [is24h]);
 
   /* ---------- Temperature (real-time via geolocation + auto refresh) ---------- */
-  const [rawTemperatureC, setRawTemperatureC] = useState(null); // RAW temperature in Celsius
-  const [isCelsius, setIsCelsius] = useState(loadFromStorage("clock_isCelsius", true));
-  const [locationStatus, setLocationStatus] = useState("BUSCANDO...");
-  const [locationName, setLocationName] = useState("CIDADE");
+  // 'null' para indicar estado de carregamento inicial
+  const [rawTemperatureC, setRawTemperatureC] = useState<number | null>(null);
+  const [isCelsius, setIsCelsius] = useState<boolean>(
+    loadFromStorage("clock_isCelsius", true)
+  );
+  const [locationStatus, setLocationStatus] = useState<string>("BUSCANDO...");
+  const [locationName, setLocationName] = useState<string>("CIDADE");
 
   useEffect(() => saveToStorage("clock_isCelsius", isCelsius), [isCelsius]);
 
-  const fetchTemperature = useCallback(() => {
+  const fetchTemperature = useCallback((): void => {
     if (!navigator.geolocation) {
       setLocationStatus("SEM GPS");
       setRawTemperatureC(25); // Fallback
@@ -99,46 +134,54 @@ export default function App() {
     setRawTemperatureC(null);
 
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      async (pos: Position) => { // Type 'pos'
         const { latitude, longitude } = pos.coords;
         setLocationStatus("OK");
-        
-        // --- API 1: Reverse Geocoding (Nominatim - OpenStreetMap) ---
-        let city = "Localização Atual";
-        try {
-            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`);
-            const geoData = await geoRes.json();
-            
-            // Tenta extrair o nome da cidade/país de forma robusta
-            const address = geoData.address || {};
-            city = address.city || address.town || address.village || address.state || address.country || geoData.display_name.split(',').slice(0, 2).join(', ').trim() || "Localização Atual";
-            
-            setLocationName(city);
 
+        // --- API 1: Reverse Geocoding (Nominatim - OpenStreetMap) ---
+        let city: string = "Localização Atual";
+        try {
+          const geoRes = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`
+          );
+          const geoData = await geoRes.json();
+
+          // Tenta extrair o nome da cidade/país de forma robusta
+          const address = geoData.address || {};
+          city =
+            address.city ||
+            address.town ||
+            address.village ||
+            address.state ||
+            address.country ||
+            (geoData.display_name?.split(",")?.slice(0, 2)?.join(", ")?.trim()) ||
+            "Localização Atual";
+
+          setLocationName(city);
         } catch (error) {
-            console.error("Erro ao buscar nome da localização:", error);
-            setLocationName("Localização Atual");
+          console.error("Erro ao buscar nome da localização:", error);
+          setLocationName("Localização Atual");
         }
 
         // --- API 2: Weather (OpenMeteo) ---
         try {
-            const weatherRes = await fetch(
-                `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&temperature_unit=celsius`
-            );
-            const weatherData = await weatherRes.json();
-            
-            const tempC = weatherData?.current_weather?.temperature;
-            if (typeof tempC === "number") {
-                setRawTemperatureC(tempC); // Armazena o valor RAW em Celsius
-            } else {
-                setRawTemperatureC(25); // Fallback
-            }
-        } catch (error) {
-            console.error("Erro ao buscar temperatura:", error);
+          const weatherRes = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&temperature_unit=celsius`
+          );
+          const weatherData = await weatherRes.json();
+
+          const tempC = weatherData?.current_weather?.temperature;
+          if (typeof tempC === "number") {
+            setRawTemperatureC(tempC); // Armazena o valor RAW em Celsius
+          } else {
             setRawTemperatureC(25); // Fallback
+          }
+        } catch (error) {
+          console.error("Erro ao buscar temperatura:", error);
+          setRawTemperatureC(25); // Fallback
         }
       },
-      (err) => {
+      (err: GeolocationPositionError) => { // Type 'err'
         console.warn("Erro ao obter localização:", err);
         setLocationStatus("BLOQUEADO");
         setRawTemperatureC(25);
@@ -154,13 +197,13 @@ export default function App() {
   }, [fetchTemperature]);
 
   /* ---------- Alarm ---------- */
-  const [alarm, setAlarm] = useState(() =>
+  const [alarm, setAlarm] = useState<AlarmState>(() => // Type AlarmState
     loadFromStorage("clock_alarm", { enabled: false, time: "07:30" })
   );
   useEffect(() => saveToStorage("clock_alarm", alarm), [alarm]);
 
-  const [isAlarmRinging, setIsAlarmRinging] = useState(false);
-  const alarmTimeoutRef = useRef(null);
+  const [isAlarmRinging, setIsAlarmRinging] = useState<boolean>(false);
+  const alarmTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!alarm.enabled) {
@@ -190,7 +233,7 @@ export default function App() {
     return () => {};
   }, [now, alarm, isAlarmRinging]);
 
-  const stopAlarm = () => {
+  const stopAlarm = (): void => {
     setIsAlarmRinging(false);
     if (alarmTimeoutRef.current) {
       clearTimeout(alarmTimeoutRef.current);
@@ -199,23 +242,23 @@ export default function App() {
   };
 
   /* ---------- Stopwatch ---------- */
-  const [swRunning, setSwRunning] = useState(false);
-  const [swElapsed, setSwElapsed] = useState(() =>
+  const [swRunning, setSwRunning] = useState<boolean>(false);
+  const [swElapsed, setSwElapsed] = useState<number>(() => // Type number (ms)
     loadFromStorage("clock_stopwatch", 0)
   ); // ms
-  const swRef = useRef({ startAt: null, accumulated: swElapsed });
+  const swRef = useRef<StopwatchRef>({ startAt: null, accumulated: swElapsed }); // Type StopwatchRef
   // persist stopwatch on change
   useEffect(() => saveToStorage("clock_stopwatch", swElapsed), [swElapsed]);
 
   useEffect(() => {
-    let id = null;
+    let id: number | null = null;
     if (swRunning) {
-      // Use Date.now() for better clock sync, though performance.now() is often preferred for precision, 
+      // Use Date.now() for better clock sync, though performance.now() is often preferred for precision,
       // Date.now() avoids issues with system sleep and keeps it simpler for this context.
       swRef.current.startAt = Date.now() - swRef.current.accumulated; // Calculate start time based on accumulated time
       id = setInterval(() => {
         const nowp = Date.now();
-        const total = nowp - swRef.current.startAt;
+        const total = nowp - (swRef.current.startAt || nowp); // Safety check for startAt
         setSwElapsed(Math.floor(total));
       }, 100);
     } else {
@@ -231,7 +274,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [swRunning]);
 
-  const swStartPause = () => {
+  const swStartPause = (): void => {
     setSwRunning((r) => {
       // Before setting running state, update accumulated time if pausing
       if (r && swRef.current.startAt) {
@@ -240,18 +283,18 @@ export default function App() {
       return !r;
     });
   };
-  const swReset = () => {
+  const swReset = (): void => {
     setSwRunning(false);
     swRef.current = { startAt: null, accumulated: 0 };
     setSwElapsed(0);
   };
 
   /* ---------- Timer (countdown) ---------- */
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [timerRemaining, setTimerRemaining] = useState(() =>
+  const [timerRunning, setTimerRunning] = useState<boolean>(false);
+  const [timerRemaining, setTimerRemaining] = useState<number>(() => // Type number (ms)
     loadFromStorage("clock_timer_ms", 0)
   ); // ms
-  const timerRef = useRef({ endAt: null, base: timerRemaining });
+  const timerRef = useRef<TimerRef>({ endAt: null, base: timerRemaining }); // Type TimerRef
 
   useEffect(
     () => saveToStorage("clock_timer_ms", timerRemaining),
@@ -259,11 +302,11 @@ export default function App() {
   );
 
   useEffect(() => {
-    let id = null;
+    let id: number | null = null;
     if (timerRunning && timerRef.current.endAt) {
       id = setInterval(() => {
         const nowp = Date.now();
-        const left = Math.max(0, timerRef.current.endAt - nowp);
+        const left = Math.max(0, timerRef.current.endAt! - nowp); // Use non-null assertion as it's checked above
         setTimerRemaining(left);
         if (left === 0) {
           setTimerRunning(false);
@@ -278,26 +321,26 @@ export default function App() {
     };
   }, [timerRunning]);
 
-  const timerStart = (ms) => {
+  const timerStart = (ms: number): void => { // Type ms
     // If starting a paused timer, use current remaining time
-    const startMs = timerRunning ? timerRemaining : ms;
+    const startMs: number = timerRunning ? timerRemaining : ms;
     if (startMs <= 0) return;
-    
+
     // If starting from a clean slate or new setting, update base
     if (!timerRunning) {
-        timerRef.current.base = startMs;
+      timerRef.current.base = startMs;
     }
-    
+
     timerRef.current.endAt = Date.now() + startMs;
     setTimerRemaining(startMs);
     setTimerRunning(true);
   };
-  
-  const timerPause = () => {
+
+  const timerPause = (): void => {
     if (!timerRunning) return; // Already paused
-    
+
     setTimerRunning(false);
-    
+
     if (timerRef.current.endAt) {
       const left = Math.max(0, timerRef.current.endAt - Date.now());
       setTimerRemaining(left);
@@ -305,32 +348,35 @@ export default function App() {
       timerRef.current.endAt = null;
     }
   };
-  
-  const timerReset = () => {
+
+  const timerReset = (): void => {
     setTimerRunning(false);
     timerRef.current = { endAt: null, base: 0 };
     setTimerRemaining(0);
     setIsAlarmRinging(false); // Stop ringing if reset happens
     if (alarmTimeoutRef.current) {
-        clearTimeout(alarmTimeoutRef.current);
-        alarmTimeoutRef.current = null;
+      clearTimeout(alarmTimeoutRef.current);
+      alarmTimeoutRef.current = null;
     }
   };
 
   /* ---------- Small UI state for modals/forms ---------- */
-  const [showAlarmEditor, setShowAlarmEditor] = useState(false);
-  const [showTimerEditor, setShowTimerEditor] = useState(false);
+  const [showAlarmEditor, setShowAlarmEditor] = useState<boolean>(false);
+  const [showTimerEditor, setShowTimerEditor] = useState<boolean>(false);
 
   // local controlled input values
-  const [alarmInput, setAlarmInput] = useState(alarm.time);
+  const [alarmInput, setAlarmInput] = useState<string>(alarm.time);
   useEffect(() => setAlarmInput(alarm.time), [alarm.time]);
 
-  const saveAlarm = (enabled, timeStr) => {
+  const saveAlarm = (enabled: boolean, timeStr: string): void => { // Type parameters
     setAlarm({ enabled, time: timeStr });
     setShowAlarmEditor(false);
   };
 
-  const saveTimerFromForm = (minutes, seconds) => {
+  const [timerMinutesInput, setTimerMinutesInput] = useState<string>("00");
+  const [timerSecondsInput, setTimerSecondsInput] = useState<string>("00");
+
+  const saveTimerFromForm = (minutes: string, seconds: string): void => { // Type parameters
     const total = Math.max(0, Number(minutes) * 60 + Number(seconds)) * 1000;
     timerReset(); // Always reset first to clear previous state
     timerStart(total);
@@ -338,13 +384,12 @@ export default function App() {
   };
 
   /* ---------- Display content ---------- */
-  const display = useMemo(() => {
+  const display: DisplayContent = useMemo(() => { // Type DisplayContent
     // Time formatting
-    const hoursRaw = now.getHours();
-    const displayHours = is24h ? hoursRaw : hoursRaw % 12 || 12;
-    const minutes = String(now.getMinutes()).padStart(2, "0");
-    //const seconds = String(now.getSeconds()).padStart(2, "0");
-    const ampm = is24h ? "" : hoursRaw >= 12 ? "PM" : "AM";
+    const hoursRaw: number = now.getHours();
+    const displayHours: number = is24h ? hoursRaw : hoursRaw % 12 || 12;
+    const minutes: string = String(now.getMinutes()).padStart(2, "0");
+    const ampm: string = is24h ? "" : hoursRaw >= 12 ? "PM" : "AM";
 
     switch (mode) {
       case "TIME":
@@ -360,9 +405,9 @@ export default function App() {
           label: "HORA",
         };
       case "DATE": {
-        const dd = String(now.getDate()).padStart(2, "0");
-        const mm = String(now.getMonth() + 1).padStart(2, "0");
-        const yy = String(now.getFullYear()).slice(-2);
+        const dd: string = String(now.getDate()).padStart(2, "0");
+        const mm: string = String(now.getMonth() + 1).padStart(2, "0");
+        const yy: string = String(now.getFullYear()).slice(-2);
         return {
           main: `${dd}.${mm}.${yy}`,
           sub: `${now
@@ -372,14 +417,20 @@ export default function App() {
         };
       }
       case "TEMP": {
-        let displayTemp;
+        let displayTemp: string;
         if (rawTemperatureC === null) {
           displayTemp = "...°C"; // Carregando
         } else if (isCelsius) {
-          displayTemp = `${rawTemperatureC !== null ? rawTemperatureC.toFixed(1) : "..."}°C`;
+          displayTemp = `${
+            rawTemperatureC !== null ? rawTemperatureC.toFixed(1) : "..."
+          }°C`;
         } else {
           // Conversão instantânea: Celsius para Fahrenheit
-          displayTemp = `${rawTemperatureC !== null ? (rawTemperatureC * 1.8 + 32).toFixed(1) : "..."}°F`;
+          displayTemp = `${
+            rawTemperatureC !== null
+              ? (rawTemperatureC * 1.8 + 32).toFixed(1)
+              : "..."
+          }°F`;
         }
 
         return {
@@ -391,10 +442,10 @@ export default function App() {
       }
 
       case "STOPWATCH": {
-        const totalMs = swElapsed;
-        const cs = Math.floor((totalMs % 1000) / 10); // centiseconds
-        const s = Math.floor(totalMs / 1000) % 60;
-        const m = Math.floor(totalMs / 60000);
+        const totalMs: number = swElapsed;
+        const cs: number = Math.floor((totalMs % 1000) / 10); // centiseconds
+        const s: number = Math.floor(totalMs / 1000) % 60;
+        const m: number = Math.floor(totalMs / 60000);
         return {
           main: `${String(m).padStart(2, "0")}:${String(s).padStart(
             2,
@@ -405,18 +456,30 @@ export default function App() {
         };
       }
       case "TIMER": {
-        const left = timerRemaining;
-        const sTotal = Math.ceil(left / 1000);
-        const s = sTotal % 60;
-        const m = Math.floor(sTotal / 60);
-        
+        const left: number = timerRemaining;
+        const sTotal: number = Math.ceil(left / 1000);
+        const s: number = sTotal % 60;
+        const m: number = Math.floor(sTotal / 60);
+
         // Se o timer não estiver rodando e remaining for 0, mostra a duração base se houver.
-        const effectiveM = timerRunning || timerRemaining > 0 ? m : Math.floor(timerRef.current.base / 60000);
-        const effectiveS = timerRunning || timerRemaining > 0 ? s : Math.floor((timerRef.current.base % 60000) / 1000);
+        const effectiveM: number =
+          timerRunning || timerRemaining > 0
+            ? m
+            : Math.floor(timerRef.current.base / 60000);
+        const effectiveS: number =
+          timerRunning || timerRemaining > 0
+            ? s
+            : Math.floor((timerRef.current.base % 60000) / 1000);
 
         return {
-          main: `${String(effectiveM).padStart(2, "0")}:${String(effectiveS).padStart(2, "0")}`,
-          sub: timerRunning ? "TIMER RUN" : (timerRemaining > 0 ? "PAUSE" : "SET"),
+          main: `${String(effectiveM).padStart(2, "0")}:${String(
+            effectiveS
+          ).padStart(2, "0")}`,
+          sub: timerRunning
+            ? "TIMER RUN"
+            : timerRemaining > 0
+            ? "PAUSE"
+            : "SET",
           label: "CONTADOR",
         };
       }
@@ -427,19 +490,20 @@ export default function App() {
     mode,
     now,
     is24h,
-    rawTemperatureC, 
-    isCelsius, 
+    rawTemperatureC,
+    isCelsius,
     locationStatus,
     locationName,
     swElapsed,
     swRunning,
     timerRemaining,
     timerRunning,
+    timerRef,
   ]);
 
   /* ---------- Small accessibility/keyboard handlers ---------- */
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => { // Type KeyboardEvent
       if (e.key === " ") {
         // space toggles mode (for convenience)
         e.preventDefault();
@@ -455,11 +519,10 @@ export default function App() {
   }, [cycleMode, touchOrMove]);
 
   /* ---------- Touch handler: tap to cycle mode ---------- */
-  const lastTapRef = useRef(0);
-  const handleTap = (e) => {
+  const lastTapRef = useRef<number>(0);
+  const handleTap = (e: React.MouseEvent<HTMLDivElement>): void => { // Type React.MouseEvent
     e.preventDefault();
     const nowt = Date.now();
-    const delta = nowt - lastTapRef.current;
     lastTapRef.current = nowt;
     // single tap: cycle mode
     cycleMode();
@@ -468,7 +531,9 @@ export default function App() {
   };
 
   /* ---------- Styles (JSX inlined) ---------- */
-  const containerStyle = {
+  const containerStyle: React.CSSProperties = { // Type React.CSSProperties
+    WebkitUserSelect: "none",
+    userSelect: "none",
     width: "100vw",
     height: "100vh",
     display: "flex",
@@ -477,7 +542,6 @@ export default function App() {
     background: "#000", // pure black for minimal look
     color: "#fff",
     touchAction: "manipulation",
-    WebkitUserSelect: "none",
   };
 
   /* ---------- Render ---------- */
@@ -675,36 +739,50 @@ export default function App() {
         onClick={handleTap}
       >
         <div
-          className={`clock-frame ${isAlarmRinging ? 'alarm-ring-overlay' : ''}`}
+          className={`clock-frame ${
+            isAlarmRinging ? "alarm-ring-overlay" : ""
+          }`}
           role="application"
           aria-label="Relógio digital"
         >
           <div className="label">{display.label}</div>
-          
+
           {/* Unidade de Temperatura/Hora 12/24 */}
           <div className="sub small">
-            {mode !== "TEMP" ? (is24h ? "24H" : "12H") : (
-                <button
-                    className="ctrl-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsCelsius((prev) => !prev);
-                    }}
-                    title="Alternar entre °C e °F"
-                    style={{padding: '4px 8px', fontSize: '0.75rem', lineHeight: 1, height: 'auto', background: 'rgba(255,255,255,0.1)'}}
-                >
-                    {isCelsius ? "°C" : "°F"}
-                </button>
+            {mode !== "TEMP" ? (
+              is24h ? (
+                "24H"
+              ) : (
+                "12H"
+              )
+            ) : (
+              <button
+                className="ctrl-btn"
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+                  e.stopPropagation();
+                  setIsCelsius((prev) => !prev);
+                }}
+                title="Alternar entre °C e °F"
+                style={{
+                  padding: "4px 8px",
+                  fontSize: "0.75rem",
+                  lineHeight: 1,
+                  height: "auto",
+                  background: "rgba(255,255,255,0.1)",
+                }}
+              >
+                {isCelsius ? "°C" : "°F"}
+              </button>
             )}
           </div>
-          
+
           {/* Nome da Localização para o modo TEMP */}
           {mode === "TEMP" && (
             <div className="sub small location-name">
-                {locationStatus === "OK" ? locationName : locationStatus}
+              {locationStatus === "OK" ? locationName : locationStatus}
             </div>
           )}
-          
+
           {/* Main display */}
           <div
             className="display digit-led"
@@ -723,44 +801,91 @@ export default function App() {
             AL: {alarm.enabled ? alarm.time : "OFF"}
           </div>
 
-          <div className="corner-btn" style={{ right: 12, top: 12, display: mode === 'TEMP' ? 'none' : 'flex' }}>
+          <div
+            className="corner-btn"
+            style={{
+              right: 12,
+              top: 12,
+              display: mode === "TEMP" ? "none" : "flex",
+            }}
+          >
             {mode === "TIME" && (
-                <button
+              <button
                 className="ctrl-btn"
-                onClick={(e) => {
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
                   e.stopPropagation();
                   setIs24h((v) => !v);
                   touchOrMove();
                 }}
                 title="Alternar 12/24h"
-                style={{background: 'rgba(255,255,255,0.04)', padding: '6px 10px'}}
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "6px 10px",
+                }}
               >
                 {is24h ? "24H" : "12H"}
               </button>
             )}
             <button
               className="ctrl-btn"
-              onClick={(e) => {
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
                 e.stopPropagation();
                 setShowAlarmEditor(true);
                 touchOrMove();
               }}
               title="Configurar alarme"
-              style={{background: 'rgba(255,255,255,0.04)', padding: '6px 10px'}}
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                padding: "6px 10px",
+              }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.375 22h3.25"/><path d="M12 2c-.757 0-1.78.332-2.5.83-1.076.745-1.5 1.76-1.5 2.17.65.65 1.5.97 2.5.97h3c1 0 1.85-.32 2.5-.97 0-.41-.424-1.425-1.5-2.17C13.78 2.332 12.757 2 12 2Z"/></svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                <path d="M10.375 22h3.25" />
+                <path d="M12 2c-.757 0-1.78.332-2.5.83-1.076.745-1.5 1.76-1.5 2.17.65.65 1.5.97 2.5.97h3c1 0 1.85-.32 2.5-.97 0-.41-.424-1.425-1.5-2.17C13.78 2.332 12.757 2 12 2Z" />
+              </svg>
             </button>
             <button
               className="ctrl-btn"
-              onClick={(e) => {
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
                 e.stopPropagation();
                 setShowTimerEditor(true);
                 touchOrMove();
               }}
               title="Configurar contador"
-              style={{background: 'rgba(255,255,255,0.04)', padding: '6px 10px'}}
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                padding: "6px 10px",
+              }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 2h4"/><path d="M21 16V8a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7"/><path d="M17 21v-4a2 2 0 0 1 2-2h4"/><path d="M7 10h.01"/><path d="M11 10h.01"/><path d="M15 10h.01"/></svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M10 2h4" />
+                <path d="M21 16V8a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7" />
+                <path d="M17 21v-4a2 2 0 0 1 2-2h4" />
+                <path d="M7 10h.01" />
+                <path d="M11 10h.01" />
+                <path d="M15 10h.01" />
+              </svg>
             </button>
           </div>
 
@@ -771,18 +896,18 @@ export default function App() {
               <>
                 <button
                   className="ctrl-btn"
-                  onClick={(e) => {
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
                     e.stopPropagation();
                     swStartPause();
                     touchOrMove();
                   }}
-                  style={{background: swRunning ? '#b91c1c' : '#16a34a'}}
+                  style={{ background: swRunning ? "#b91c1c" : "#16a34a" }}
                 >
                   {swRunning ? "PAUSE" : "START"}
                 </button>
                 <button
                   className="ctrl-btn"
-                  onClick={(e) => {
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
                     e.stopPropagation();
                     swReset();
                     touchOrMove();
@@ -793,27 +918,36 @@ export default function App() {
               </>
             ) : mode === "TIMER" ? (
               <>
-                {(!timerRunning && timerRemaining > 0) || (timerRemaining === 0 && timerRef.current.base > 0) ? (
+                {(!timerRunning && timerRemaining > 0) ||
+                (timerRemaining === 0 && timerRef.current.base > 0) ? (
                   <button
                     className="ctrl-btn"
-                    onClick={(e) => {
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
                       e.stopPropagation();
-                      timerStart(timerRemaining > 0 ? timerRemaining : timerRef.current.base);
+                      timerStart(
+                        timerRemaining > 0
+                          ? timerRemaining
+                          : timerRef.current.base
+                      );
                       touchOrMove();
                     }}
-                    style={{background: '#16a34a'}}
+                    style={{ background: "#16a34a" }}
                   >
                     START
                   </button>
                 ) : (
                   <button
                     className="ctrl-btn"
-                    onClick={(e) => {
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
                       e.stopPropagation();
                       timerPause();
                       touchOrMove();
                     }}
-                    style={{background: timerRunning ? '#b91c1c' : 'rgba(255,255,255,0.06)'}}
+                    style={{
+                      background: timerRunning
+                        ? "#b91c1c"
+                        : "rgba(255,255,255,0.06)",
+                    }}
                     disabled={!timerRunning}
                   >
                     PAUSE
@@ -821,13 +955,13 @@ export default function App() {
                 )}
                 <button
                   className="ctrl-btn"
-                  onClick={(e) => {
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
                     e.stopPropagation();
                     timerReset();
                     touchOrMove();
                   }}
                 >
-                    RESET
+                  RESET
                 </button>
               </>
             ) : (
@@ -835,7 +969,7 @@ export default function App() {
               <>
                 <button
                   className="ctrl-btn"
-                  onClick={(e) => {
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
                     e.stopPropagation();
                     cycleMode();
                     touchOrMove();
@@ -845,12 +979,12 @@ export default function App() {
                 </button>
                 <button
                   className="ctrl-btn"
-                  onClick={(e) => {
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
                     e.stopPropagation();
                     setAlarm((a) => ({ ...a, enabled: !a.enabled }));
                     touchOrMove();
                   }}
-                  style={{background: alarm.enabled ? '#b91c1c' : '#047857'}}
+                  style={{ background: alarm.enabled ? "#b91c1c" : "#047857" }}
                 >
                   {alarm.enabled ? "AL OFF" : "AL ON"}
                 </button>
@@ -873,29 +1007,41 @@ export default function App() {
                 pointerEvents: "auto",
                 borderRadius: 10,
               }}
-              onClick={(e) => {
+              onClick={(e: React.MouseEvent<HTMLDivElement>) => { // Type e
                 e.stopPropagation();
                 stopAlarm();
               }}
             >
               <div style={{ textAlign: "center" }}>
                 <div
-                  style={{ fontSize: 48, fontWeight: 700, color: "#ffb4b4", animation: 'blink 0.5s steps(1, start) infinite' }}
+                  style={{
+                    fontSize: 48,
+                    fontWeight: 700,
+                    color: "#ffb4b4",
+                    animation: "blink 0.5s steps(1, start) infinite",
+                  }}
                   className="digit-led"
                 >
                   ALARME!
                 </div>
-                <div style={{ marginTop: 8, color: "#ffdede", fontSize: 24, fontFamily: 'Orbitron' }}>
+                <div
+                  style={{
+                    marginTop: 8,
+                    color: "#ffdede",
+                    fontSize: 24,
+                    fontFamily: "Orbitron",
+                  }}
+                >
                   {alarm.time}
                 </div>
                 <div style={{ marginTop: 14 }}>
                   <button
                     className="ctrl-btn"
-                    onClick={(ev) => {
+                    onClick={(ev: React.MouseEvent<HTMLButtonElement>) => { // Type ev
                       ev.stopPropagation();
                       stopAlarm();
                     }}
-                    style={{background: '#b91c1c'}}
+                    style={{ background: "#b91c1c" }}
                   >
                     PARAR
                   </button>
@@ -909,54 +1055,47 @@ export default function App() {
       {/* ---------- Alarm Editor Modal ---------- */}
       {showAlarmEditor && (
         <div className="overlay" onClick={() => setShowAlarmEditor(false)}>
-          <div className="card" onClick={(e) => e.stopPropagation()}>
+          <div className="card" onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}>
             <h3 style={{ margin: 0, marginBottom: 16 }}>Configurar Alarme</h3>
-            
+
             <div className="form-row">
-              <input
-                className="input"
-                type="time"
-                value={alarmInput}
-                onChange={(e) => setAlarmInput(e.target.value)}
-                style={{width: 'auto', flex: 1}}
-              />
-              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <label style={{ minWidth: 50 }}>Hora:</label>
                 <input
-                  type="checkbox"
-                  checked={alarm.enabled}
-                  onChange={(e) =>
-                    setAlarm((a) => ({ ...a, enabled: e.target.checked }))
-                  }
-                  style={{width: '20px', height: '20px'}}
+                    type="time"
+                    className="input"
+                    value={alarmInput}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAlarmInput(e.target.value)}
+                    style={{ fontFamily: 'Orbitron' }}
                 />
-                <span style={{ fontSize: 14 }}>Ativado</span>
-              </label>
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                justifyContent: "flex-end",
-                marginTop: 12,
-              }}
-            >
-              <button
-                className="ctrl-btn"
-                onClick={() => {
-                  saveAlarm(alarm.enabled, alarmInput);
-                }}
-                style={{background: '#059669'}}
-              >
-                SALVAR
-              </button>
-              <button
-                className="ctrl-btn"
-                onClick={() => {
-                  setShowAlarmEditor(false);
-                }}
-              >
-                CANCELAR
-              </button>
+            <div className="form-row" style={{ alignItems: 'flex-start' }}>
+                <label style={{ minWidth: 50, paddingTop: 10 }}>Status:</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexGrow: 1, padding: 8 }}>
+                    <input
+                        type="checkbox"
+                        checked={alarm.enabled}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAlarm((a) => ({ ...a, enabled: e.target.checked }))}
+                    />
+                    {alarm.enabled ? 'Ativo' : 'Desativado'}
+                </label>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+                <button
+                    className="ctrl-btn"
+                    onClick={() => setShowAlarmEditor(false)}
+                    style={{ background: 'none', borderColor: '#4a5568', color: '#a0aec0' }}
+                >
+                    Cancelar
+                </button>
+                <button
+                    className="ctrl-btn"
+                    onClick={() => saveAlarm(alarm.enabled, alarmInput)}
+                    style={{ background: '#047857' }}
+                    disabled={!alarmInput}
+                >
+                    Salvar
+                </button>
             </div>
           </div>
         </div>
@@ -965,65 +1104,58 @@ export default function App() {
       {/* ---------- Timer Editor Modal ---------- */}
       {showTimerEditor && (
         <div className="overlay" onClick={() => setShowTimerEditor(false)}>
-          <div className="card" onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ margin: 0, marginBottom: 16 }}>
-              Definir Contador (Minutos:Segundos)
-            </h3>
-            <div className="form-row">
-              <input
-                className="input"
-                type="number"
-                min="0"
-                placeholder="Minutos"
-                defaultValue={Math.floor(timerRef.current.base / 60000)}
-                id="timer-min"
-                style={{ width: "80px" }}
-              />
-              <span style={{fontSize: '20px', fontWeight: 'bold'}}>:</span>
-              <input
-                className="input"
-                type="number"
-                min="0"
-                max="59"
-                placeholder="Segundos"
-                defaultValue={Math.floor((timerRef.current.base % 60000) / 1000)}
-                id="timer-sec"
-                style={{ width: "80px" }}
-              />
+            <div className="card" onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}>
+                <h3 style={{ margin: 0, marginBottom: 16 }}>Configurar Contador</h3>
+
+                <p style={{ color: '#a0aec0', fontSize: '0.85rem', marginBottom: 12 }}>Defina a duração da contagem regressiva.</p>
+
+                <div className="form-row">
+                    <label style={{ minWidth: 50 }}>Minutos:</label>
+                    <input
+                        type="number"
+                        className="input"
+                        value={timerMinutesInput}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTimerMinutesInput(e.target.value.padStart(2, '0').slice(-2))}
+                        min="0"
+                        max="99"
+                        style={{ fontFamily: 'Orbitron', textAlign: 'center' }}
+                    />
+                </div>
+                <div className="form-row">
+                    <label style={{ minWidth: 50 }}>Segundos:</label>
+                    <input
+                        type="number"
+                        className="input"
+                        value={timerSecondsInput}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTimerSecondsInput(e.target.value.padStart(2, '0').slice(-2))}
+                        min="0"
+                        max="59"
+                        style={{ fontFamily: 'Orbitron', textAlign: 'center' }}
+                    />
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+                    <button
+                        className="ctrl-btn"
+                        onClick={() => setShowTimerEditor(false)}
+                        style={{ background: 'none', borderColor: '#4a5568', color: '#a0aec0' }}
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        className="ctrl-btn"
+                        onClick={() => saveTimerFromForm(timerMinutesInput, timerSecondsInput)}
+                        style={{ background: '#047857' }}
+                        disabled={!timerMinutesInput && !timerSecondsInput}
+                    >
+                        Salvar & Iniciar
+                    </button>
+                </div>
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                justifyContent: "flex-end",
-                marginTop: 12,
-              }}
-            >
-              <button
-                className="ctrl-btn"
-                onClick={() => {
-                  const min = Number(
-                    document.getElementById("timer-min").value || 0
-                  );
-                  const sec = Number(
-                    document.getElementById("timer-sec").value || 0
-                  );
-                  saveTimerFromForm(min, sec);
-                }}
-                style={{background: '#059669'}}
-              >
-                INICIAR/SALVAR
-              </button>
-              <button
-                className="ctrl-btn"
-                onClick={() => setShowTimerEditor(false)}
-              >
-                CANCELAR
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </>
   );
-}
+};
+
+export default App;
