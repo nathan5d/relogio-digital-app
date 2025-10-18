@@ -2,9 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/x-icon" href="/icons/favicon.ico" />
+    
+    <!-- Paths corrigidos para iniciar com / (absoluto ao root do app) -->
+    <link rel="icon" type="image/x-icon" href="/relogio-digital-app/icons/favicon.ico" />
+    
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="manifest" href="/manifest.json" />
+    
     <meta name="theme-color" content="#000000" />
 
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -12,12 +15,15 @@
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
     />
-    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    
+    <!-- Path do Apple Touch Icon corrigido (CRÍTICO para iOS PWA) -->
+    <link rel="apple-touch-icon" href="/relogio-digital-app/icons/icon-192.png" />
 
     <title>relogio-digital-app</title>
   </head>
   <body>
     <div id="root"></div>
+    <!-- Path do script principal corrigido (boa prática de consistência) -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

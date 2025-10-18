@@ -577,6 +577,15 @@ const App: React.FC = () => {
           line-height: 0.95;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
+          
+          /* Corrigido para relógio de mesa: a fonte principal deve ser maior que os números */
+          font-size: 16vw;
+        }
+        
+        /* Ajuste de tamanho para modos que usam mais espaço (como data) */
+        .display.small-mode-font {
+             /* Use um tamanho menor quando o conteúdo for mais longo (ex: DD.MM.YY) */
+             font-size: 10vw !important; 
         }
 
         /* LED-like (subtle) */
@@ -683,14 +692,19 @@ const App: React.FC = () => {
 
         /* responsive sizes */
         @media (min-width: 1200px) {
-          .display { font-size: 12rem; }
+          /* Use um valor de vw (viewport width) alto para que a fonte se ajuste à tela */
+          .display { font-size: 16vw; } 
+          .display.small-mode-font { font-size: 10vw !important; }
         }
         @media (min-width: 800px) and (max-width:1199px) {
-          .display { font-size: 9rem; }
+          .display { font-size: 16vw; } /* manter alto */
+          .display.small-mode-font { font-size: 10vw !important; }
         }
         @media (max-width: 799px) {
           .clock-frame { padding: 1.25rem; }
-          .display { font-size: 14vmin; } /* responsive for mobile */
+          /* No mobile, use um valor mais conservador para evitar estouro, mas ainda grande */
+          .display { font-size: 14vmin; } 
+          .display.small-mode-font { font-size: 8vmin !important; }
         }
 
         /* modal overlay */
@@ -785,12 +799,14 @@ const App: React.FC = () => {
 
           {/* Main display */}
           <div
-            className="display digit-led"
+            className={`display digit-led ${
+              mode === "DATE" || mode === "TEMP" || mode === "STOPWATCH"
+                ? "small-mode-font"
+                : ""
+            }`}
             style={{
               width: "100%",
               textAlign: "right",
-              fontSize:
-                mode === "DATE" || mode === "TEMP" ? "7vmina" : undefined, // Adjust font size for non-time modes
             }}
           >
             {display.main}
@@ -991,167 +1007,126 @@ const App: React.FC = () => {
               </>
             )}
           </div>
-
-          {/* Small overlay to show alarm ringing */}
-          {isAlarmRinging && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 20,
-                background: "rgba(0,0,0,0.8)",
-                pointerEvents: "auto",
-                borderRadius: 10,
-              }}
-              onClick={(e: React.MouseEvent<HTMLDivElement>) => { // Type e
-                e.stopPropagation();
-                stopAlarm();
-              }}
-            >
-              <div style={{ textAlign: "center" }}>
-                <div
-                  style={{
-                    fontSize: 48,
-                    fontWeight: 700,
-                    color: "#ffb4b4",
-                    animation: "blink 0.5s steps(1, start) infinite",
-                  }}
-                  className="digit-led"
-                >
-                  ALARME!
-                </div>
-                <div
-                  style={{
-                    marginTop: 8,
-                    color: "#ffdede",
-                    fontSize: 24,
-                    fontFamily: "Orbitron",
-                  }}
-                >
-                  {alarm.time}
-                </div>
-                <div style={{ marginTop: 14 }}>
-                  <button
-                    className="ctrl-btn"
-                    onClick={(ev: React.MouseEvent<HTMLButtonElement>) => { // Type ev
-                      ev.stopPropagation();
-                      stopAlarm();
-                    }}
-                    style={{ background: "#b91c1c" }}
-                  >
-                    PARAR
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
+      {/* Alarme Ringing Snackbar */}
+      {isAlarmRinging && (
+        <div
+          className="overlay"
+          onClick={stopAlarm}
+          style={{ cursor: "pointer" }}
+        >
+          <div
+            className="card"
+            style={{
+              padding: "2rem",
+              background: "#120a0a",
+              border: "2px solid #ff0000",
+              textAlign: "center",
+            }}
+          >
+            <h2 style={{ color: "#ff6666", marginBottom: "1rem" }}>
+              ALARMANDO!
+            </h2>
+            <p>Toque para parar.</p>
+            <p
+              style={{
+                fontSize: "2rem",
+                marginTop: "1rem",
+                fontFamily: "Orbitron",
+              }}
+            >
+              {alarm.time}
+            </p>
+          </div>
+        </div>
+      )}
 
-      {/* ---------- Alarm Editor Modal ---------- */}
+      {/* Alarm Editor Modal */}
       {showAlarmEditor && (
         <div className="overlay" onClick={() => setShowAlarmEditor(false)}>
-          <div className="card" onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}>
-            <h3 style={{ margin: 0, marginBottom: 16 }}>Configurar Alarme</h3>
-
+          <div className="card" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: "1.5rem" }}>
+              Configurar Alarme ({alarm.time})
+            </h3>
             <div className="form-row">
-                <label style={{ minWidth: 50 }}>Hora:</label>
-                <input
-                    type="time"
-                    className="input"
-                    value={alarmInput}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAlarmInput(e.target.value)}
-                    style={{ fontFamily: 'Orbitron' }}
-                />
+              <label>Hora:</label>
+              <input
+                type="time"
+                className="input"
+                value={alarmInput}
+                onChange={(e) => setAlarmInput(e.target.value)}
+              />
             </div>
-            <div className="form-row" style={{ alignItems: 'flex-start' }}>
-                <label style={{ minWidth: 50, paddingTop: 10 }}>Status:</label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexGrow: 1, padding: 8 }}>
-                    <input
-                        type="checkbox"
-                        checked={alarm.enabled}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAlarm((a) => ({ ...a, enabled: e.target.checked }))}
-                    />
-                    {alarm.enabled ? 'Ativo' : 'Desativado'}
-                </label>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-                <button
-                    className="ctrl-btn"
-                    onClick={() => setShowAlarmEditor(false)}
-                    style={{ background: 'none', borderColor: '#4a5568', color: '#a0aec0' }}
-                >
-                    Cancelar
-                </button>
-                <button
-                    className="ctrl-btn"
-                    onClick={() => saveAlarm(alarm.enabled, alarmInput)}
-                    style={{ background: '#047857' }}
-                    disabled={!alarmInput}
-                >
-                    Salvar
-                </button>
+            <div className="form-row" style={{ justifyContent: "space-between" }}>
+              <button
+                className="ctrl-btn"
+                onClick={() => saveAlarm(false, alarmInput)}
+                style={{ background: "#b91c1c" }}
+              >
+                DESLIGAR
+              </button>
+              <button
+                className="ctrl-btn"
+                onClick={() => saveAlarm(true, alarmInput)}
+                style={{ background: "#16a34a" }}
+              >
+                LIGAR E SALVAR
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ---------- Timer Editor Modal ---------- */}
+      {/* Timer Editor Modal */}
       {showTimerEditor && (
         <div className="overlay" onClick={() => setShowTimerEditor(false)}>
-            <div className="card" onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}>
-                <h3 style={{ margin: 0, marginBottom: 16 }}>Configurar Contador</h3>
-
-                <p style={{ color: '#a0aec0', fontSize: '0.85rem', marginBottom: 12 }}>Defina a duração da contagem regressiva.</p>
-
-                <div className="form-row">
-                    <label style={{ minWidth: 50 }}>Minutos:</label>
-                    <input
-                        type="number"
-                        className="input"
-                        value={timerMinutesInput}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTimerMinutesInput(e.target.value.padStart(2, '0').slice(-2))}
-                        min="0"
-                        max="99"
-                        style={{ fontFamily: 'Orbitron', textAlign: 'center' }}
-                    />
-                </div>
-                <div className="form-row">
-                    <label style={{ minWidth: 50 }}>Segundos:</label>
-                    <input
-                        type="number"
-                        className="input"
-                        value={timerSecondsInput}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTimerSecondsInput(e.target.value.padStart(2, '0').slice(-2))}
-                        min="0"
-                        max="59"
-                        style={{ fontFamily: 'Orbitron', textAlign: 'center' }}
-                    />
-                </div>
-                
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-                    <button
-                        className="ctrl-btn"
-                        onClick={() => setShowTimerEditor(false)}
-                        style={{ background: 'none', borderColor: '#4a5568', color: '#a0aec0' }}
-                    >
-                        Cancelar
-                    </button>
-                    <button
-                        className="ctrl-btn"
-                        onClick={() => saveTimerFromForm(timerMinutesInput, timerSecondsInput)}
-                        style={{ background: '#047857' }}
-                        disabled={!timerMinutesInput && !timerSecondsInput}
-                    >
-                        Salvar & Iniciar
-                    </button>
-                </div>
+          <div className="card" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: "1.5rem" }}>
+              Definir Contador ({Math.floor(timerRef.current.base / 60000)}m
+              {Math.floor((timerRef.current.base % 60000) / 1000)}s)
+            </h3>
+            <div className="form-row">
+              <label>Minutos:</label>
+              <input
+                type="number"
+                className="input"
+                value={timerMinutesInput}
+                onChange={(e) => setTimerMinutesInput(e.target.value)}
+                min="0"
+                max="59"
+              />
             </div>
+            <div className="form-row">
+              <label>Segundos:</label>
+              <input
+                type="number"
+                className="input"
+                value={timerSecondsInput}
+                onChange={(e) => setTimerSecondsInput(e.target.value)}
+                min="0"
+                max="59"
+              />
+            </div>
+            <div className="form-row" style={{ justifyContent: "space-between" }}>
+              <button
+                className="ctrl-btn"
+                onClick={() => setShowTimerEditor(false)}
+                style={{ background: "#475569" }}
+              >
+                CANCELAR
+              </button>
+              <button
+                className="ctrl-btn"
+                onClick={() =>
+                  saveTimerFromForm(timerMinutesInput, timerSecondsInput)
+                }
+                style={{ background: "#16a34a" }}
+              >
+                INICIAR/REDEFINIR
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>
