@@ -1,68 +1,309 @@
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap");
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  background-color: #000000;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* iOS safe area fix */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
+/* Garante que o fundo preencha toda a tela, incluindo notch e home indicator */
+html,
+body,
+#root {
+  background-color: black;
   margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: fixed; /* evita recorte e rolagem no iOS */
+  inset: 0; /* substitui top/right/bottom/left */
+}
+
+/* Contêiner com padding para respeitar as áreas seguras */
+.safe-area-padding {
+  padding-top: var(--safe-top);
+  padding-right: var(--safe-right);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+}
+
+/* Para casos em que a área precisa ocupar todo o espaço sem overflow */
+.fullscreen-safe {
+  position: absolute;
+  top: var(--safe-top);
+  right: var(--safe-right);
+  bottom: var(--safe-bottom);
+  left: var(--safe-left);
+}
+
+/* Exemplo: seu container principal */
+.clock-frame {
+  width: calc(100% - var(--safe-left) - var(--safe-right));
+  height: calc(100% - var(--safe-top) - var(--safe-bottom));
+  margin: 0 auto;
   display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  box-sizing: border-box;
+  padding: 2rem;
+  background-color: black;
+  user-select: none;
+}
+.display {
+  font-family: "Orbitron", system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  text-align: center;
+  color: #e6fff6;
+  line-height: 0.95;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* Corrigido para relógio de mesa: a fonte principal deve ser maior que os números */
+  font-size: 16vw;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+/* Ajuste de tamanho para modos que usam mais espaço (como data) */
+.display.small-mode-font {
+  /* Use um tamanho menor quando o conteúdo for mais longo (ex: DD.MM.YY) */
+  font-size: 10vw !important;
 }
 
-button {
+/* LED-like (subtle) */
+.digit-led {
+  text-shadow: 0 0 6px rgba(230, 255, 246, 0.25),
+    0 0 14px rgba(230, 255, 246, 0.08);
+}
+
+.label {
+  position: absolute;
+  top: 6px; /* sobe um pouco */
+  left: 18px;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sub {
+  position: absolute;
+  top: 6px;
+  right: 18px;
+  font-size: 0.9rem;
+  color: #a7f3d0;
+  opacity: 0.9;
+  letter-spacing: 0.05em;
+}
+
+/* Location Name adjustment */
+.sub.location-name {
+  font-size: 0.75rem; /* slightly smaller */
+  max-width: 50%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  top: 28px; /* positioned below the unit toggle */
+  right: 18px;
+  color: #9ca3af;
+}
+
+.ampm-indicator {
+  font-family: "Orbitron", sans-serif;
+  font-size: 0.8rem;
+  opacity: 0.6;
+  text-align: right;
+  margin-top: 0.2rem;
+}
+
+/* AL: status separado, canto esquerdo inferior */
+.alarm-indicator {
+  position: absolute;
+  bottom: 28px;
+  left: 18px;
+  font-size: 0.8rem;
+  color: #6b7280;
+  letter-spacing: 0.1em;
+}
+
+/* piscar dos dois pontos */
+.blink {
+  animation: blink 1s steps(1, start) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* controls (appear on hover/touch) */
+.controls {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  opacity: 0;
+  transition: opacity 200ms;
+}
+.controls.visible {
+  opacity: 1;
+}
+.ctrl-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 8px 12px;
+  color: #e6fff6;
   border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
+  font-weight: 700;
   cursor: pointer;
-  transition: border-color 0.25s;
+  min-width: 44px;
+  transition: all 0.1s ease;
 }
-button:hover {
-  border-color: #646cff;
+.ctrl-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+.ctrl-btn:active {
+  transform: translateY(1px);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+.corner-btn {
+  position: absolute;
+  top: 20px;
+  right: 12px;
+  background: none;
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  gap: 6px;
+}
+
+.small {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+/* responsive sizes */
+@media (min-width: 1200px) {
+  /* Use um valor de vw (viewport width) alto para que a fonte se ajuste à tela */
+  .display {
+    font-size: 16vw;
   }
-  a:hover {
-    color: #747bff;
+  .display.small-mode-font {
+    font-size: 10vw !important;
   }
-  button {
-    background-color: #f9f9f9;
+}
+@media (min-width: 800px) and (max-width: 1199px) {
+  .display {
+    font-size: 16vw;
+  } /* manter alto */
+  .display.small-mode-font {
+    font-size: 10vw !important;
+  }
+}
+@media (max-width: 799px) {
+  .clock-frame {
+    padding: 1.25rem;
+  }
+  /* No mobile, use um valor mais conservador para evitar estouro, mas ainda grande */
+  .display {
+    font-size: 14vmin;
+  }
+  .display.small-mode-font {
+    font-size: 8vmin !important;
+  }
+}
+
+/* modal overlay */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 30;
+}
+.card {
+  background: #0b1220;
+  padding: 1.5rem;
+  border-radius: 12px;
+  min-width: 280px;
+  color: #e6fff6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.form-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+.input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e6fff6;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 1rem;
+  min-width: 0;
+  flex-grow: 1;
+}
+.display {
+  transition: all 0.3s ease-in-out;
+}
+
+/* Alarm Ringing Effect */
+.alarm-ring-overlay {
+  animation: ring-pulse 1s infinite alternate;
+}
+@keyframes ring-pulse {
+  from {
+    box-shadow: 0 0 10px #ff6666, 0 0 20px #ff6666;
+  }
+  to {
+    box-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000;
+  }
+}
+
+/* Landscape fix: evita redução de fonte e mantém altura total */
+@media (orientation: landscape) {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .clock-frame {
+    /* CORRIGIDO: Usar 100% em vez de 100vh para evitar borda no iOS */
+    height: 100%;
+    width: 100%;
+    aspect-ratio: auto; /* ignora proporção fixa */
+    padding: 2rem;
+  }
+
+  .display {
+    font-size: 20vw !important; /* mantém fonte grande */
+  }
+
+  .display.small-mode-font {
+    font-size: 16vw !important;
   }
 }

@@ -1,69 +1,70 @@
+// vite.config.ts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  base: "/relogio-digital-app/", // caminho no GitHub Pages
   plugins: [
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      // Novo: Injeta o script de registro automaticamente.
       injectRegister: "auto",
-
+      includeAssets: [
+        "favicon.ico",
+        "apple-touch-icon.png",
+        "icon-192.png",
+        "icon-512.png",
+        "icon-192-maskable.png",
+        "icon-512-maskable.png",
+      ],
       manifest: {
         name: "Relógio Digital Minimalista",
-        short_name: "ClockPWA",
-        theme_color: "#000000",
-        background_color: "#000000",
-        display: "fullscreen",
-
-        // CORRIGIDO: Garante a orientação (landscape-primary)
-        orientation: "landscape",
-
-        // CORRIGIDO: Define a URL de início para o subdiretório
+        short_name: "Relógio",
+        description: "Relógio digital minimalista e responsivo",
         start_url: "/relogio-digital-app/",
-
-        // CRÍTICO 2: Definir o 'scope' (escopo do app) para o subdiretório
         scope: "/relogio-digital-app/",
+        display: "fullscreen",
+        background_color: "#000000",
+        theme_color: "#000000",
+        orientation: "landscape",
         icons: [
           {
-            src: "/icons/icon-192.png",
+            src: "icon-192.png",
             sizes: "192x192",
             type: "image/png",
+            purpose: "any",
           },
           {
-            src: "/icons/icon-512.png",
+            src: "icon-512.png",
             sizes: "512x512",
             type: "image/png",
+            purpose: "any",
           },
-          // Idealmente, adicione ícones maskable aqui para Android
-          // Exemplo:
           {
-            src: "/icons/icon-192-maskable.png",
+            src: "icon-192-maskable.png",
             sizes: "192x192",
             type: "image/png",
             purpose: "maskable",
-          }, {
-            src: "/icons/icon-192-maskable.png",
+          },
+          {
+            src: "icon-512-maskable.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable",
           },
         ],
       },
-
-      // NOVO: Configuração Workbox para cache e fallback
       workbox: {
-        // Aumenta o limite de tamanho do arquivo para 5MB
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        // Define quais arquivos devem ser precacheados
         globPatterns: [
-          "**/*.{js,css,html,ico,png,svg,woff,woff2,json,webmanifest}",
+          "**/*.{js,css,html,ico,png,svg,woff2,json,webmanifest}",
         ],
-        // CRÍTICO para subdiretórios: Garante que todas as navegações voltem para o index.
         navigateFallback: "/relogio-digital-app/index.html",
+      },
+      devOptions: {
+        enabled: true, // permite testar o PWA no ambiente local
       },
     }),
   ],
-  base: "/relogio-digital-app/",
 });

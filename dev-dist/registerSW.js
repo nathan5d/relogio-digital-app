@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/relogio-digital-app/dev-sw.js?dev-sw', { scope: '/relogio-digital-app/', type: 'classic' })

@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import InstallPWAButton from "./components/InstallPWAButton";
 
 // Definições de Tipos (Interfaces)
 // ----------------------------------------------------
@@ -34,12 +35,12 @@ interface TimerRef {
 
 // Helpers para Geolocation
 interface Position {
-    coords: GeolocationCoordinates;
-    timestamp: number;
+  coords: GeolocationCoordinates;
+  timestamp: number;
 }
 interface GeolocationPositionError {
-    readonly code: number;
-    readonly message: string;
+  readonly code: number;
+  readonly message: string;
 }
 
 // Funções Auxiliares
@@ -108,7 +109,9 @@ const App: React.FC = () => {
   }, [touchOrMove]);
 
   /* ---------- Display format 12/24 ---------- */
-  const [is24h, setIs24h] = useState<boolean>(loadFromStorage("clock_is24h", true));
+  const [is24h, setIs24h] = useState<boolean>(
+    loadFromStorage("clock_is24h", true)
+  );
   useEffect(() => saveToStorage("clock_is24h", is24h), [is24h]);
 
   /* ---------- Temperature (real-time via geolocation + auto refresh) ---------- */
@@ -134,7 +137,8 @@ const App: React.FC = () => {
     setRawTemperatureC(null);
 
     navigator.geolocation.getCurrentPosition(
-      async (pos: Position) => { // Type 'pos'
+      async (pos: Position) => {
+        // Type 'pos'
         const { latitude, longitude } = pos.coords;
         setLocationStatus("OK");
 
@@ -154,7 +158,7 @@ const App: React.FC = () => {
             address.village ||
             address.state ||
             address.country ||
-            (geoData.display_name?.split(",")?.slice(0, 2)?.join(", ")?.trim()) ||
+            geoData.display_name?.split(",")?.slice(0, 2)?.join(", ")?.trim() ||
             "Localização Atual";
 
           setLocationName(city);
@@ -181,7 +185,8 @@ const App: React.FC = () => {
           setRawTemperatureC(25); // Fallback
         }
       },
-      (err: GeolocationPositionError) => { // Type 'err'
+      (err: GeolocationPositionError) => {
+        // Type 'err'
         console.warn("Erro ao obter localização:", err);
         setLocationStatus("BLOQUEADO");
         setRawTemperatureC(25);
@@ -197,7 +202,8 @@ const App: React.FC = () => {
   }, [fetchTemperature]);
 
   /* ---------- Alarm ---------- */
-  const [alarm, setAlarm] = useState<AlarmState>(() => // Type AlarmState
+  const [alarm, setAlarm] = useState<AlarmState>(() =>
+    // Type AlarmState
     loadFromStorage("clock_alarm", { enabled: false, time: "07:30" })
   );
   useEffect(() => saveToStorage("clock_alarm", alarm), [alarm]);
@@ -243,7 +249,8 @@ const App: React.FC = () => {
 
   /* ---------- Stopwatch ---------- */
   const [swRunning, setSwRunning] = useState<boolean>(false);
-  const [swElapsed, setSwElapsed] = useState<number>(() => // Type number (ms)
+  const [swElapsed, setSwElapsed] = useState<number>(() =>
+    // Type number (ms)
     loadFromStorage("clock_stopwatch", 0)
   ); // ms
   const swRef = useRef<StopwatchRef>({ startAt: null, accumulated: swElapsed }); // Type StopwatchRef
@@ -291,7 +298,8 @@ const App: React.FC = () => {
 
   /* ---------- Timer (countdown) ---------- */
   const [timerRunning, setTimerRunning] = useState<boolean>(false);
-  const [timerRemaining, setTimerRemaining] = useState<number>(() => // Type number (ms)
+  const [timerRemaining, setTimerRemaining] = useState<number>(() =>
+    // Type number (ms)
     loadFromStorage("clock_timer_ms", 0)
   ); // ms
   const timerRef = useRef<TimerRef>({ endAt: null, base: timerRemaining }); // Type TimerRef
@@ -321,7 +329,8 @@ const App: React.FC = () => {
     };
   }, [timerRunning]);
 
-  const timerStart = (ms: number): void => { // Type ms
+  const timerStart = (ms: number): void => {
+    // Type ms
     // If starting a paused timer, use current remaining time
     const startMs: number = timerRunning ? timerRemaining : ms;
     if (startMs <= 0) return;
@@ -368,7 +377,8 @@ const App: React.FC = () => {
   const [alarmInput, setAlarmInput] = useState<string>(alarm.time);
   useEffect(() => setAlarmInput(alarm.time), [alarm.time]);
 
-  const saveAlarm = (enabled: boolean, timeStr: string): void => { // Type parameters
+  const saveAlarm = (enabled: boolean, timeStr: string): void => {
+    // Type parameters
     setAlarm({ enabled, time: timeStr });
     setShowAlarmEditor(false);
   };
@@ -376,15 +386,90 @@ const App: React.FC = () => {
   const [timerMinutesInput, setTimerMinutesInput] = useState<string>("00");
   const [timerSecondsInput, setTimerSecondsInput] = useState<string>("00");
 
-  const saveTimerFromForm = (minutes: string, seconds: string): void => { // Type parameters
+  const saveTimerFromForm = (minutes: string, seconds: string): void => {
+    // Type parameters
     const total = Math.max(0, Number(minutes) * 60 + Number(seconds)) * 1000;
     timerReset(); // Always reset first to clear previous state
     timerStart(total);
     setShowTimerEditor(false);
   };
 
+  const [autoMode, setAutoMode] = useState<boolean>(
+    loadFromStorage("clock_autoMode", false)
+  );
+  useEffect(() => saveToStorage("clock_autoMode", autoMode), [autoMode]);
+
+  // Alternância automática entre modos (TIME, DATE, TEMP)
+  const autoTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (autoMode) {
+      // troca de modo a cada 5 segundos
+      autoTimerRef.current = setInterval(() => {
+        setModeIndex((m) => (m + 1) % 3); // apenas TIME, DATE, TEMP
+      }, 5000);
+    } else {
+      if (autoTimerRef.current) clearInterval(autoTimerRef.current);
+    }
+    return () => {
+      if (autoTimerRef.current) clearInterval(autoTimerRef.current);
+    };
+  }, [autoMode]);
+
+  useEffect(() => {
+    let wakeLock: any = null;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+    const requestWakeLock = async () => {
+      if (!isIOS && "wakeLock" in navigator) {
+        try {
+          wakeLock = await (navigator as any).wakeLock.request("screen");
+          console.log("🔋 Wake Lock ativo");
+
+          // Se o lock for perdido (por exemplo, o app minimizado)
+          wakeLock.addEventListener("release", () => {
+            console.log("⚠️ Wake Lock liberado");
+          });
+        } catch (err) {
+          console.warn("Falha ao ativar Wake Lock:", err);
+        }
+      } else {
+        // fallback leve para iOS
+        console.log("📱 iOS detectado — aplicando fallback");
+
+        // cria um loop de áudio silencioso para manter o dispositivo acordado
+        const audio = document.createElement("audio");
+        audio.src =
+          "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCA...";
+        audio.loop = true;
+        audio.volume = 0.00001; // inaudível
+        audio.play().catch(() => {
+          console.log(
+            "🔇 Falha ao iniciar áudio (iOS bloqueado até interação)"
+          );
+        });
+      }
+    };
+
+    requestWakeLock();
+
+    // reativa quando a aba volta ao foco
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (wakeLock) wakeLock.release?.();
+    };
+  }, []);
+
   /* ---------- Display content ---------- */
-  const display: DisplayContent = useMemo(() => { // Type DisplayContent
+  const display: DisplayContent = useMemo(() => {
+    // Type DisplayContent
     // Time formatting
     const hoursRaw: number = now.getHours();
     const displayHours: number = is24h ? hoursRaw : hoursRaw % 12 || 12;
@@ -503,7 +588,8 @@ const App: React.FC = () => {
 
   /* ---------- Small accessibility/keyboard handlers ---------- */
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { // Type KeyboardEvent
+    const onKey = (e: KeyboardEvent) => {
+      // Type KeyboardEvent
       if (e.key === " ") {
         // space toggles mode (for convenience)
         e.preventDefault();
@@ -520,7 +606,8 @@ const App: React.FC = () => {
 
   /* ---------- Touch handler: tap to cycle mode ---------- */
   const lastTapRef = useRef<number>(0);
-  const handleTap = (e: React.MouseEvent<HTMLDivElement>): void => { // Type React.MouseEvent
+  const handleTap = (e: React.MouseEvent<HTMLDivElement>): void => {
+    // Type React.MouseEvent
     e.preventDefault();
     const nowt = Date.now();
     lastTapRef.current = nowt;
@@ -531,7 +618,8 @@ const App: React.FC = () => {
   };
 
   /* ---------- Styles (JSX inlined) ---------- */
-  const containerStyle: React.CSSProperties = { // Type React.CSSProperties
+  const containerStyle: React.CSSProperties = {
+    // Type React.CSSProperties
     WebkitUserSelect: "none",
     userSelect: "none",
     width: "100vw",
@@ -547,205 +635,6 @@ const App: React.FC = () => {
   /* ---------- Render ---------- */
   return (
     <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
-
-        body { margin: 0; padding: 0; }
-
-        .clock-frame {
-          width: 96%;
-          max-width: 1200px;
-          aspect-ratio: 4/1.2;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-          border-radius: 10px;
-          background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-          padding: 2rem;
-          box-sizing: border-box;
-          user-select: none;
-        }
-
-        .display {
-          font-family: 'Orbitron', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-          font-weight: 700;
-          letter-spacing: 0.02em;
-          text-transform: none;
-          text-align: center;
-          color: #e6fff6;
-          line-height: 0.95;
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
-          
-          /* Corrigido para relógio de mesa: a fonte principal deve ser maior que os números */
-          font-size: 16vw;
-        }
-        
-        /* Ajuste de tamanho para modos que usam mais espaço (como data) */
-        .display.small-mode-font {
-             /* Use um tamanho menor quando o conteúdo for mais longo (ex: DD.MM.YY) */
-             font-size: 10vw !important; 
-        }
-
-        /* LED-like (subtle) */
-        .digit-led {
-          text-shadow:
-            0 0 6px rgba(230,255,246,0.25),
-            0 0 14px rgba(230,255,246,0.08);
-        }
-
-       .label {
-          position: absolute;
-          top: 6px;          /* sobe um pouco */
-          left: 18px;
-          font-size: 0.8rem;
-          color: #9ca3af;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-        }
-
-        .sub {
-          position: absolute;
-          top: 6px;
-          right: 18px;
-          font-size: 0.9rem;
-          color: #a7f3d0;
-          opacity: 0.9;
-          letter-spacing: 0.05em;
-        }
-        
-        /* Location Name adjustment */
-        .sub.location-name {
-            font-size: 0.75rem; /* slightly smaller */
-            max-width: 50%;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-            top: 28px; /* positioned below the unit toggle */
-            right: 18px;
-            color: #9ca3af;
-        }
-
-
-        /* AL: status separado, canto esquerdo inferior */
-        .alarm-indicator {
-          position: absolute;
-          bottom: 28px;
-          left: 18px;
-          font-size: 0.8rem;
-          color: #6b7280;
-          letter-spacing: 0.1em;
-        }
-
-        /* piscar dos dois pontos */
-        .blink {
-          animation: blink 1s steps(1, start) infinite;
-        }
-        @keyframes blink {
-          50% {
-            opacity: 0;
-          }
-        }
-
-        /* controls (appear on hover/touch) */
-        .controls {
-          position: absolute;
-          bottom: 14px;
-          left: 50%;
-          transform: translateX(-50%);
-          display: flex;
-          gap: 10px;
-          opacity: 0;
-          transition: opacity 200ms;
-        }
-        .controls.visible { opacity: 1; }
-        .ctrl-btn {
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.06);
-          padding: 8px 12px;
-          color: #e6fff6;
-          border-radius: 8px;
-          font-weight: 700;
-          cursor: pointer;
-          min-width: 44px;
-          transition: all 0.1s ease;
-        }
-        .ctrl-btn:hover { background: rgba(255,255,255,0.1); }
-        .ctrl-btn:active { transform: translateY(1px); }
-
-        .corner-btn {
-          position: absolute;
-          top: 20px;
-          right: 12px;
-          background: none;
-          border-radius: 8px;
-          padding: 6px;
-          display: flex;
-          gap: 6px;
-        }
-
-        .small {
-          font-size: 0.9rem;
-          opacity: 0.9;
-        }
-
-        /* responsive sizes */
-        @media (min-width: 1200px) {
-          /* Use um valor de vw (viewport width) alto para que a fonte se ajuste à tela */
-          .display { font-size: 16vw; } 
-          .display.small-mode-font { font-size: 10vw !important; }
-        }
-        @media (min-width: 800px) and (max-width:1199px) {
-          .display { font-size: 16vw; } /* manter alto */
-          .display.small-mode-font { font-size: 10vw !important; }
-        }
-        @media (max-width: 799px) {
-          .clock-frame { padding: 1.25rem; }
-          /* No mobile, use um valor mais conservador para evitar estouro, mas ainda grande */
-          .display { font-size: 14vmin; } 
-          .display.small-mode-font { font-size: 8vmin !important; }
-        }
-
-        /* modal overlay */
-        .overlay {
-          position: fixed; inset: 0;
-          display: flex; align-items: center; justify-content: center;
-          background: rgba(0,0,0,0.8); z-index: 30;
-        }
-        .card {
-          background: #0b1220;
-          padding: 1.5rem;
-          border-radius: 12px;
-          min-width: 280px;
-          color: #e6fff6;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        }
-        .form-row { display:flex; gap:10px; margin-bottom: 12px; align-items:center; }
-        .input {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.1);
-          color: #e6fff6;
-          padding: 10px 12px;
-          border-radius: 8px;
-          font-size: 1rem;
-          min-width: 0;
-          flex-grow: 1;
-        }
-        .display {
-          transition: all 0.3s ease-in-out;
-        }
-        
-        /* Alarm Ringing Effect */
-        .alarm-ring-overlay {
-            animation: ring-pulse 1s infinite alternate;
-        }
-        @keyframes ring-pulse {
-            from { box-shadow: 0 0 10px #ff6666, 0 0 20px #ff6666; }
-            to { box-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000; }
-        }
-      `}</style>
-
       <div
         style={containerStyle}
         onMouseMove={touchOrMove}
@@ -767,12 +656,13 @@ const App: React.FC = () => {
               is24h ? (
                 "24H"
               ) : (
-                "12H"
+                display.sub
               )
             ) : (
               <button
                 className="ctrl-btn"
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  // Type e
                   e.stopPropagation();
                   setIsCelsius((prev) => !prev);
                 }}
@@ -812,6 +702,21 @@ const App: React.FC = () => {
             {display.main}
           </div>
 
+          {/* Exibir AM/PM ou texto auxiliar */}
+          {display.sub && (
+            <div
+              className="subs ampm-indicator"
+              style={{
+                fontSize: "1rem",
+                opacity: 0.8,
+                textAlign: "right",
+                marginTop: "0.25rem",
+                letterSpacing: "1px",
+              }}
+            >
+              {((!is24h && mode == "TIME") || mode == "DATE") && display.sub}
+            </div>
+          )}
           {/* Corner small actions: toggle 12/24, alarm editor, timer editor */}
           <div className="alarm-indicator">
             AL: {alarm.enabled ? alarm.time : "OFF"}
@@ -821,14 +726,14 @@ const App: React.FC = () => {
             className="corner-btn"
             style={{
               right: 12,
-              top: 12,
               display: mode === "TEMP" ? "none" : "flex",
             }}
           >
             {mode === "TIME" && (
               <button
                 className="ctrl-btn"
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  // Type e
                   e.stopPropagation();
                   setIs24h((v) => !v);
                   touchOrMove();
@@ -844,7 +749,8 @@ const App: React.FC = () => {
             )}
             <button
               className="ctrl-btn"
-              onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                // Type e
                 e.stopPropagation();
                 setShowAlarmEditor(true);
                 touchOrMove();
@@ -873,7 +779,8 @@ const App: React.FC = () => {
             </button>
             <button
               className="ctrl-btn"
-              onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                // Type e
                 e.stopPropagation();
                 setShowTimerEditor(true);
                 touchOrMove();
@@ -908,11 +815,23 @@ const App: React.FC = () => {
           {/* Controls (center bottom) */}
           <div className={`controls ${showControls ? "visible" : ""}`}>
             {/* Contextual controls */}
+            <button
+              className="ctrl-btn"
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                // Type e
+                e.stopPropagation();
+                cycleMode();
+                touchOrMove();
+              }}
+            >
+              NEXT MODE
+            </button>
             {mode === "STOPWATCH" ? (
               <>
                 <button
                   className="ctrl-btn"
-                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    // Type e
                     e.stopPropagation();
                     swStartPause();
                     touchOrMove();
@@ -923,7 +842,8 @@ const App: React.FC = () => {
                 </button>
                 <button
                   className="ctrl-btn"
-                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    // Type e
                     e.stopPropagation();
                     swReset();
                     touchOrMove();
@@ -938,7 +858,8 @@ const App: React.FC = () => {
                 (timerRemaining === 0 && timerRef.current.base > 0) ? (
                   <button
                     className="ctrl-btn"
-                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                      // Type e
                       e.stopPropagation();
                       timerStart(
                         timerRemaining > 0
@@ -954,7 +875,8 @@ const App: React.FC = () => {
                 ) : (
                   <button
                     className="ctrl-btn"
-                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                      // Type e
                       e.stopPropagation();
                       timerPause();
                       touchOrMove();
@@ -971,7 +893,8 @@ const App: React.FC = () => {
                 )}
                 <button
                   className="ctrl-btn"
-                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    // Type e
                     e.stopPropagation();
                     timerReset();
                     touchOrMove();
@@ -985,17 +908,8 @@ const App: React.FC = () => {
               <>
                 <button
                   className="ctrl-btn"
-                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
-                    e.stopPropagation();
-                    cycleMode();
-                    touchOrMove();
-                  }}
-                >
-                  NEXT MODE
-                </button>
-                <button
-                  className="ctrl-btn"
-                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => { // Type e
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    // Type e
                     e.stopPropagation();
                     setAlarm((a) => ({ ...a, enabled: !a.enabled }));
                     touchOrMove();
@@ -1003,6 +917,20 @@ const App: React.FC = () => {
                   style={{ background: alarm.enabled ? "#b91c1c" : "#047857" }}
                 >
                   {alarm.enabled ? "AL OFF" : "AL ON"}
+                </button>
+
+                <button
+                  className="ctrl-btn"
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    e.stopPropagation();
+                    setAutoMode((prev) => !prev);
+                    touchOrMove();
+                  }}
+                  style={{
+                    background: autoMode ? "#0ea5e9" : "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  {autoMode ? "AUTO ON" : "AUTO OFF"}
                 </button>
               </>
             )}
@@ -1058,7 +986,10 @@ const App: React.FC = () => {
                 onChange={(e) => setAlarmInput(e.target.value)}
               />
             </div>
-            <div className="form-row" style={{ justifyContent: "space-between" }}>
+            <div
+              className="form-row"
+              style={{ justifyContent: "space-between" }}
+            >
               <button
                 className="ctrl-btn"
                 onClick={() => saveAlarm(false, alarmInput)}
@@ -1108,7 +1039,10 @@ const App: React.FC = () => {
                 max="59"
               />
             </div>
-            <div className="form-row" style={{ justifyContent: "space-between" }}>
+            <div
+              className="form-row"
+              style={{ justifyContent: "space-between" }}
+            >
               <button
                 className="ctrl-btn"
                 onClick={() => setShowTimerEditor(false)}
@@ -1128,7 +1062,9 @@ const App: React.FC = () => {
             </div>
           </div>
         </div>
+         
       )}
+      <InstallPWAButton />
     </>
   );
 };
